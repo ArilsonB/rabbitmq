@@ -1,8 +1,11 @@
 const express = require('express');
+const axios = require('axios');
 const app = express();
 const port = 3000;
 
 const amqp = require('amqplib');
+
+app.use(express.json());
 
 // Connect to RabbitMQ server
 const connectToRabbitMQ = async () => {
@@ -11,15 +14,14 @@ const connectToRabbitMQ = async () => {
     const channel = await connection.createChannel();
     const queue = 'exampleQueue';
 
-    // Ensure the queue exists
-
-    await channel.assertQueue(queue, { durable: false });
 
     // Set up the route to publish a message to RabbitMQ
     app.post('/publish', async (req, res) => {
       const message = req.body.message || 'Hello RabbitMQ!';
 
       // const queueName = req.body.queueName || 'queue0';
+
+      await channel.assertQueue(req.body.queueName, { durable: false });
 
       channel.sendToQueue(queue, Buffer.from(message));
       res.send('Message sent to RabbitMQ');
@@ -28,19 +30,27 @@ const connectToRabbitMQ = async () => {
     // Set up the route to consume messages from RabbitMQ
     app.get('/consume', async (req, res) => {
 
-      channel.consume(queue, (msg) => {
-        if (msg) {
-          console.log(`Received message: ${msg.content.toString()}`);
-          channel.ack(msg);
+      const response = await axios.get('http://user:password@localhost:15672/api/queues');
 
-          
 
-          channel.deleteQueue(queue);
-          res.send(`Received message: ${msg.content.toString()}`);
-        } else {
-          res.send('No messages in the queue');
-        }
-      });
+      response.data.forEach((queue) => {
+        channel.consume(queue.name, (msg) => {
+          if (msg) {
+            console.log(`Received message: ${msg.content.toString()}`);
+            channel.ack(msg);
+
+            channel.deleteQueue(queue.name);
+
+            res.send(`Received message`);
+
+          } else {
+            
+          }
+        });
+      })
+      // res.send('No messages in the queue');
+      // ${msg.content.toString()}
+      
     });
 
     console.log('Connected to RabbitMQ');
@@ -50,8 +60,6 @@ const connectToRabbitMQ = async () => {
 };
 
 connectToRabbitMQ();
-
-app.use(express.json());
 
 app.get('/', (req, res) => {
   res.send('Hello World!');
